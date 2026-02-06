@@ -1,44 +1,41 @@
-import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongodb";
-import { DailySales } from "@/types/sales";
+import { NextResponse } from "next/server"
+import clientPromise from "@/lib/mongodb"
+import { format } from "date-fns"
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as DailySales;
+  const { amount, note } = await req.json()
 
-  if (!body?.date || !body?.sales) {
-    return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+  if (!amount || amount <= 0) {
+    return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
   }
 
-  const client = await clientPromise;
-  const db = client.db("daily_sales");
-  const collection = db.collection("sales");
+  const client = await clientPromise
+  const db = client.db("salesDB")
 
-  await collection.insertOne({
-    ...body,
-    createdAt: new Date()
-  });
+  const now = new Date()
 
-  return NextResponse.json({ success: true });
+  await db.collection("sales").insertOne({
+    date: format(now, "yyyy-MM-dd"),
+    time: format(now, "HH:mm"),
+    amount,
+    note: note || "",
+  })
+
+  return NextResponse.json({ success: true })
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
+  const { searchParams } = new URL(req.url)
+  const date = searchParams.get("date")
 
-  if (!from || !to) {
-    return NextResponse.json({ error: "Missing date range" }, { status: 400 });
-  }
+  const client = await clientPromise
+  const db = client.db("salesDB")
 
-  const client = await clientPromise;
-  const db = client.db("daily_sales");
-  const collection = db.collection("sales");
+  const sales = await db
+    .collection("sales")
+    .find(date ? { date } : {})
+    .sort({ time: 1 })
+    .toArray()
 
-  const data = await collection
-    .find({
-      date: { $gte: from, $lte: to }
-    })
-    .toArray();
-
-  return NextResponse.json(data);
+  return NextResponse.json(sales)
 }
